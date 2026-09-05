@@ -15,6 +15,21 @@ CREATE TABLE IF NOT EXISTS incidents(
  event TEXT NOT NULL, action TEXT NOT NULL, details TEXT NOT NULL DEFAULT '{}',
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS voice_hubs(
+ guild_id INTEGER NOT NULL, hub_id INTEGER PRIMARY KEY, category_id INTEGER NOT NULL,
+ panel_channel_id INTEGER, log_channel_id INTEGER, name_template TEXT NOT NULL DEFAULT '{display_name}''s Room',
+ default_limit INTEGER NOT NULL DEFAULT 0, default_locked INTEGER NOT NULL DEFAULT 0,
+ grace_seconds INTEGER NOT NULL DEFAULT 0, rename_cooldown INTEGER NOT NULL DEFAULT 30,
+ max_channels INTEGER NOT NULL DEFAULT 1, thumbnail TEXT, icon_only INTEGER NOT NULL DEFAULT 0,
+ staff_roles TEXT NOT NULL DEFAULT '[]', auto_roles TEXT NOT NULL DEFAULT '[]', immune_roles TEXT NOT NULL DEFAULT '[]'
+);
+CREATE TABLE IF NOT EXISTS temp_voice_channels(
+ channel_id INTEGER PRIMARY KEY, guild_id INTEGER NOT NULL, hub_id INTEGER NOT NULL,
+ owner_id INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ locked INTEGER NOT NULL DEFAULT 0, private INTEGER NOT NULL DEFAULT 0, user_limit INTEGER NOT NULL DEFAULT 0,
+ permitted TEXT NOT NULL DEFAULT '[]', banned TEXT NOT NULL DEFAULT '[]', custom_name TEXT,
+ owner_left_at TEXT, last_rename_at TEXT
+);
 """
 
 
@@ -57,3 +72,18 @@ class Database:
             return await (await db.execute(
                 "SELECT * FROM incidents WHERE guild_id=? ORDER BY id DESC LIMIT ?", (guild_id, limit)
             )).fetchall()
+
+    async def voice_fetchone(self, sql: str, params: tuple[Any, ...] = ()) -> aiosqlite.Row | None:
+        async with self.lock, aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            return await (await db.execute(sql, params)).fetchone()
+
+    async def voice_fetchall(self, sql: str, params: tuple[Any, ...] = ()) -> list[aiosqlite.Row]:
+        async with self.lock, aiosqlite.connect(self.path) as db:
+            db.row_factory = aiosqlite.Row
+            return await (await db.execute(sql, params)).fetchall()
+
+    async def voice_execute(self, sql: str, params: tuple[Any, ...] = ()) -> None:
+        async with self.lock, aiosqlite.connect(self.path) as db:
+            await db.execute(sql, params)
+            await db.commit()

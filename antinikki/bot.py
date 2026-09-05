@@ -10,6 +10,7 @@ from .config import Settings, load_settings
 from .database import Database
 from .moderation import Moderation
 from .protection import AntiNikki
+from .voice import VoiceMaster
 
 
 async def dynamic_prefix(bot: "AntiNikkiBot", message: discord.Message):
@@ -40,6 +41,8 @@ class AntiNikkiBot(commands.Bot):
         await self.db.init()
         await self.add_cog(AntiNikki(self))
         await self.add_cog(Moderation(self))
+        await self.add_cog(VoiceMaster(self))
+        self.add_view(VoiceMaster.panel_view())
         if self.settings.auto_sync:
             synced = await self.tree.sync()
             self.log.info("Synced %s slash commands", len(synced))
