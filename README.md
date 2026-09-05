@@ -103,7 +103,7 @@ Every moderation and role command is available both as a comma-prefix command an
 - `,jail @user [reason]` and `,unjail @user` — apply or remove an enforced Jailed role
 - `,stfu @user [reason]` and `,unstfu @user` — add or remove the Muted role; this does not server-mute voice
 - `,vc stfu @user [reason]` and `,vc unstfu @user` — enforce or release a server voice mute; manual unmuting causes an immediate automatic re-mute
-- `,godmode add @user`, `,godmode remove @user`, and `,godmode list` — server-owner-only protection that reverses role removal, timeout, server mute/deafen, and bans. Discord cannot force a kicked account back into a server, so the bot sends a one-use rejoin link when possible.
+- `/godmode add`, `/godmode remove`, `/godmode list` (also available with the prefix) — available to the server owner, `OWNER_IDS`, and configured Anti-Nuke Admins. Reverses role removal, timeout, server mute/deafen, and bans. Discord cannot force a kicked account back into a server, so the bot sends a one-use rejoin link when possible.
 
 Role commands:
 

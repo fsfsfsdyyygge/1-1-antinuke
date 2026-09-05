@@ -59,7 +59,7 @@ class RoleListView(discord.ui.View):
 class Moderation(commands.Cog):
     role_slash = app_commands.Group(name="role", description="Manage server roles")
     vc_slash = app_commands.Group(name="vc", description="Manage enforced voice mutes")
-    godmode_slash = app_commands.Group(name="godmode", description="Server-owner protection for trusted members")
+    godmode_slash = app_commands.Group(name="godmode", description="Anti-Nuke Admin protection for trusted members")
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -70,6 +70,12 @@ class Moderation(commands.Cog):
         if not allowed:
             await ctx.reply("Only the server owner or an Anti-Nuke Admin can use this command.", mention_author=False)
         return allowed
+
+    async def can_manage_godmode(self, guild: discord.Guild, user: discord.Member | discord.User) -> bool:
+        protection = self.bot.get_cog("AntiNikki")
+        if protection is None or not isinstance(user, discord.Member):
+            return user.id == guild.owner_id or user.id in self.bot.settings.owner_ids
+        return await protection.security_admin(user)
 
     async def targetable(self, ctx: commands.Context, member: discord.Member) -> bool:
         if not await self.allowed(ctx):
@@ -286,10 +292,10 @@ class Moderation(commands.Cog):
                 return
         await interaction.response.send_message(f"🔊 Voice-mute enforcement was removed from {member.mention}.", ephemeral=True)
 
-    @godmode_slash.command(name="set", description="Enable or disable God Mode for a member (server owner only)")
+    @godmode_slash.command(name="set", description="Enable or disable God Mode for a member")
     async def slash_godmode_set(self, interaction: discord.Interaction, member: discord.Member, enabled: bool) -> None:
-        if interaction.guild is None or interaction.user.id != interaction.guild.owner_id:
-            await interaction.response.send_message("❌ Only the Discord server owner can change God Mode.", ephemeral=True)
+        if interaction.guild is None or not await self.can_manage_godmode(interaction.guild, interaction.user):
+            await interaction.response.send_message("❌ Only the server owner, an OWNER_IDS user, or an Anti-Nuke Admin can change God Mode.", ephemeral=True)
             return
         cfg = await self.bot.get_cog("AntiNikki").config(interaction.guild_id)
         protected = cfg.setdefault("godmode_users", [])
@@ -302,13 +308,35 @@ class Moderation(commands.Cog):
 
     @godmode_slash.command(name="list", description="List members protected by God Mode")
     async def slash_godmode_list(self, interaction: discord.Interaction) -> None:
-        if interaction.guild is None or interaction.user.id != interaction.guild.owner_id:
-            await interaction.response.send_message("❌ Only the Discord server owner can view God Mode.", ephemeral=True)
+        if interaction.guild is None or not await self.can_manage_godmode(interaction.guild, interaction.user):
+            await interaction.response.send_message("❌ Only the server owner, an OWNER_IDS user, or an Anti-Nuke Admin can view God Mode.", ephemeral=True)
             return
         cfg = await self.bot.get_cog("AntiNikki").config(interaction.guild_id)
         protected = cfg.get("godmode_users", [])
         value = "\n".join(f"<@{user_id}> (`{user_id}`)" for user_id in protected) or "No members are protected."
         await interaction.response.send_message(embed=discord.Embed(title="God Mode Members", description=value, color=discord.Color.gold()), ephemeral=True)
+
+    @godmode_slash.command(name="add", description="Protect a member with God Mode")
+    async def slash_godmode_add(self, interaction: discord.Interaction, member: discord.Member) -> None:
+        if interaction.guild is None or not await self.can_manage_godmode(interaction.guild, interaction.user):
+            await interaction.response.send_message("❌ Only the server owner, an OWNER_IDS user, or an Anti-Nuke Admin can change God Mode.", ephemeral=True)
+            return
+        cfg = await self.bot.get_cog("AntiNikki").config(interaction.guild_id)
+        protected = cfg.setdefault("godmode_users", [])
+        if member.id not in protected:
+            protected.append(member.id)
+        await self.bot.db.set(interaction.guild_id, cfg)
+        await interaction.response.send_message(f"🛡️ God Mode enabled for {member.mention}.", ephemeral=True)
+
+    @godmode_slash.command(name="remove", description="Remove God Mode protection from a member")
+    async def slash_godmode_remove(self, interaction: discord.Interaction, member: discord.Member) -> None:
+        if interaction.guild is None or not await self.can_manage_godmode(interaction.guild, interaction.user):
+            await interaction.response.send_message("❌ Only the server owner, an OWNER_IDS user, or an Anti-Nuke Admin can change God Mode.", ephemeral=True)
+            return
+        cfg = await self.bot.get_cog("AntiNikki").config(interaction.guild_id)
+        cfg["godmode_users"] = [user_id for user_id in cfg.get("godmode_users", []) if user_id != member.id]
+        await self.bot.db.set(interaction.guild_id, cfg)
+        await interaction.response.send_message(f"God Mode disabled for {member.mention}.", ephemeral=True)
 
     @role_slash.command(name="add", description="Give a role to a member")
     async def slash_role_add(self, interaction: discord.Interaction, member: discord.Member, role: discord.Role) -> None:
@@ -556,15 +584,15 @@ class Moderation(commands.Cog):
     @commands.group(name="godmode", aliases=["god"], invoke_without_command=True)
     @commands.guild_only()
     async def godmode(self, ctx: commands.Context) -> None:
-        if ctx.author.id != ctx.guild.owner_id:
-            await ctx.reply("❌ Only the Discord server owner can change God Mode.", mention_author=False)
+        if not await self.can_manage_godmode(ctx.guild, ctx.author):
+            await ctx.reply("❌ Only the server owner, an OWNER_IDS user, or an Anti-Nuke Admin can change God Mode.", mention_author=False)
             return
         await ctx.reply(f"Use `{ctx.prefix}godmode add @user`, `{ctx.prefix}godmode remove @user`, or `{ctx.prefix}godmode list`.", mention_author=False)
 
     @godmode.command(name="add", aliases=["on", "enable"])
     async def godmode_add(self, ctx: commands.Context, member: discord.Member) -> None:
-        if ctx.author.id != ctx.guild.owner_id:
-            await ctx.reply("❌ Only the Discord server owner can change God Mode.", mention_author=False); return
+        if not await self.can_manage_godmode(ctx.guild, ctx.author):
+            await ctx.reply("❌ Only the server owner, an OWNER_IDS user, or an Anti-Nuke Admin can change God Mode.", mention_author=False); return
         cfg = await self.bot.get_cog("AntiNikki").config(ctx.guild.id)
         protected = cfg.setdefault("godmode_users", [])
         if member.id not in protected:
@@ -574,8 +602,8 @@ class Moderation(commands.Cog):
 
     @godmode.command(name="remove", aliases=["off", "disable"])
     async def godmode_remove(self, ctx: commands.Context, member: discord.Member) -> None:
-        if ctx.author.id != ctx.guild.owner_id:
-            await ctx.reply("❌ Only the Discord server owner can change God Mode.", mention_author=False); return
+        if not await self.can_manage_godmode(ctx.guild, ctx.author):
+            await ctx.reply("❌ Only the server owner, an OWNER_IDS user, or an Anti-Nuke Admin can change God Mode.", mention_author=False); return
         cfg = await self.bot.get_cog("AntiNikki").config(ctx.guild.id)
         cfg["godmode_users"] = [user_id for user_id in cfg.get("godmode_users", []) if user_id != member.id]
         await self.bot.db.set(ctx.guild.id, cfg)
@@ -583,8 +611,8 @@ class Moderation(commands.Cog):
 
     @godmode.command(name="list")
     async def godmode_list(self, ctx: commands.Context) -> None:
-        if ctx.author.id != ctx.guild.owner_id:
-            await ctx.reply("❌ Only the Discord server owner can view God Mode.", mention_author=False); return
+        if not await self.can_manage_godmode(ctx.guild, ctx.author):
+            await ctx.reply("❌ Only the server owner, an OWNER_IDS user, or an Anti-Nuke Admin can view God Mode.", mention_author=False); return
         cfg = await self.bot.get_cog("AntiNikki").config(ctx.guild.id)
         protected = cfg.get("godmode_users", [])
         value = "\n".join(f"<@{user_id}> (`{user_id}`)" for user_id in protected) or "No members are protected."
