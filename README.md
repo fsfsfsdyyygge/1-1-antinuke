@@ -133,7 +133,7 @@ Start with:
 
 `/voice setup hub:#Join-to-Create category:Temporary-VCs panel_channel:#voice-controls log_channel:#voice-logs`
 
-Members join the selected hub and the bot creates a temporary channel, moves them into it, records ownership, and deletes the channel when empty. The shared panel provides working Lock, Unlock, Permit, channel Ban, Kick, Claim, Transfer, Rename, Limit, and Info controls. Additional commands include `/voice unban`, `/voice private`, `/voice bitrate`, `/voice region`, `/voice settings`, `/voice configure`, `/voice staff`, `/voice whitelist`, `/voice blacklist`, `/voice cleanup`, `/voice stats`, `/voice panel`, `/voice delete`, and `/voice reset`.
+Members join the selected hub and the bot creates a temporary channel, moves them into it, records ownership, and deletes the channel when empty. An icon-only two-row control panel is posted in the temporary voice channel chat whenever its owner joins. The shared panel provides working Lock, Unlock, Permit, channel Ban, Kick, Claim, Transfer, Rename, Limit, and Info controls. Additional commands include `/voice unban`, `/voice private`, `/voice bitrate`, `/voice region`, `/voice settings`, `/voice configure`, `/voice staff`, `/voice whitelist`, `/voice blacklist`, `/voice cleanup`, `/voice stats`, `/voice panel`, `/voice delete`, and `/voice reset`.
 
 Required bot permissions for the complete system: View Channels, Manage Channels, Move Members, Connect, Send Messages, Embed Links, Read Message History, and Use Application Commands. Place the bot role above roles it must manage. Enable Server Members Intent and Message Content Intent in the Discord Developer Portal (the latter is also used by the antinuke prefix commands).
 

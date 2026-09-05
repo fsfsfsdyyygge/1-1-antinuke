@@ -87,25 +87,25 @@ class VoiceMasterPanel(discord.ui.View):
             return
         await cog.panel_action(interaction, action)
 
-    @discord.ui.button(label="Lock", emoji="🔒", style=discord.ButtonStyle.secondary, row=0, custom_id="vm:lock")
+    @discord.ui.button(emoji="🔒", style=discord.ButtonStyle.secondary, row=0, custom_id="vm:lock")
     async def lock(self, i: discord.Interaction, _: discord.ui.Button) -> None: await self.run(i, "lock")
-    @discord.ui.button(label="Unlock", emoji="🔓", style=discord.ButtonStyle.secondary, row=0, custom_id="vm:unlock")
+    @discord.ui.button(emoji="🔓", style=discord.ButtonStyle.secondary, row=0, custom_id="vm:unlock")
     async def unlock(self, i: discord.Interaction, _: discord.ui.Button) -> None: await self.run(i, "unlock")
-    @discord.ui.button(label="Permit", emoji="👤", style=discord.ButtonStyle.success, row=0, custom_id="vm:permit")
+    @discord.ui.button(emoji="👥", style=discord.ButtonStyle.secondary, row=0, custom_id="vm:permit")
     async def permit(self, i: discord.Interaction, _: discord.ui.Button) -> None: await self.run(i, "permit")
-    @discord.ui.button(label="Ban", emoji="🔨", style=discord.ButtonStyle.danger, row=0, custom_id="vm:ban")
+    @discord.ui.button(emoji="🔨", style=discord.ButtonStyle.secondary, row=0, custom_id="vm:ban")
     async def ban(self, i: discord.Interaction, _: discord.ui.Button) -> None: await self.run(i, "ban")
-    @discord.ui.button(label="Kick", emoji="🥾", style=discord.ButtonStyle.danger, row=0, custom_id="vm:kick")
+    @discord.ui.button(emoji="🥾", style=discord.ButtonStyle.secondary, row=0, custom_id="vm:kick")
     async def kick(self, i: discord.Interaction, _: discord.ui.Button) -> None: await self.run(i, "kick")
-    @discord.ui.button(label="Claim", emoji="👑", style=discord.ButtonStyle.primary, row=1, custom_id="vm:claim")
+    @discord.ui.button(emoji="👑", style=discord.ButtonStyle.secondary, row=1, custom_id="vm:claim")
     async def claim(self, i: discord.Interaction, _: discord.ui.Button) -> None: await self.run(i, "claim")
-    @discord.ui.button(label="Transfer", emoji="🔄", style=discord.ButtonStyle.primary, row=1, custom_id="vm:transfer")
+    @discord.ui.button(emoji="🔄", style=discord.ButtonStyle.secondary, row=1, custom_id="vm:transfer")
     async def transfer(self, i: discord.Interaction, _: discord.ui.Button) -> None: await self.run(i, "transfer")
-    @discord.ui.button(label="Rename", emoji="✏️", style=discord.ButtonStyle.primary, row=1, custom_id="vm:rename")
+    @discord.ui.button(emoji="✏️", style=discord.ButtonStyle.secondary, row=1, custom_id="vm:rename")
     async def rename(self, i: discord.Interaction, _: discord.ui.Button) -> None: await self.run(i, "rename")
-    @discord.ui.button(label="Limit", emoji="➕", style=discord.ButtonStyle.primary, row=1, custom_id="vm:limit")
+    @discord.ui.button(emoji="➕", style=discord.ButtonStyle.secondary, row=1, custom_id="vm:limit")
     async def limit(self, i: discord.Interaction, _: discord.ui.Button) -> None: await self.run(i, "limit")
-    @discord.ui.button(label="Info", emoji="ℹ️", style=discord.ButtonStyle.secondary, row=1, custom_id="vm:info")
+    @discord.ui.button(emoji="ℹ️", style=discord.ButtonStyle.secondary, row=1, custom_id="vm:info")
     async def info(self, i: discord.Interaction, _: discord.ui.Button) -> None: await self.run(i, "info")
 
 
@@ -286,6 +286,11 @@ class VoiceMaster(commands.Cog):
             row = await self.record(after.channel.id)
             if row and member.id == int(row["owner_id"]):
                 await self.bot.db.voice_execute("UPDATE temp_voice_channels SET owner_left_at=NULL WHERE channel_id=?", (after.channel.id,))
+                try:
+                    hub = await self.hub(int(row["hub_id"]))
+                    await after.channel.send(embed=self.panel_embed(hub), view=VoiceMasterPanel())
+                except discord.HTTPException:
+                    log.warning("Could not post the VoiceMaster panel in voice channel %s", after.channel.id)
 
     async def create_for(self, member: discord.Member, source: discord.VoiceChannel) -> None:
         lock = self._guild_locks.setdefault(member.guild.id, asyncio.Lock())
@@ -319,12 +324,28 @@ class VoiceMaster(commands.Cog):
         except discord.HTTPException: pass
 
     def panel_embed(self, hub: Any | None = None) -> discord.Embed:
-        embed = discord.Embed(title="VoiceMaster Interface", description="Manage your voice channel by using the buttons below.", color=discord.Color.blurple())
-        embed.add_field(name="Button Usage", value=("🔒 — **Lock** the voice channel\n🔓 — **Unlock** the voice channel\n👤 — **Permit** a member\n"
-            "🔨 — **Ban** a member from this voice channel\n🥾 — **Kick** a connected member\n👑 — **Claim** an ownerless channel\n"
-            "🔄 — **Transfer** ownership\n✏️ — **Rename** the channel\n➕ — **Manage** the user limit\nℹ️ — **View** channel information"), inline=False)
-        if hub and hub["thumbnail"]: embed.set_thumbnail(url=hub["thumbnail"])
-        embed.set_footer(text="Controls apply to the temporary voice channel you are currently connected to.")
+        embed = discord.Embed(
+            title="VoiceMaster Interface",
+            description="Manage your voice channel by\nusing the buttons below.",
+            color=discord.Color(0x252956),
+        )
+        embed.add_field(name="Button Usage", value=(
+            "🔒 — **Lock** the voice channel\n"
+            "🔓 — **Unlock** the voice channel\n"
+            "👥 — **Permit** a member to the voice channel\n"
+            "🔨 — **Ban** a member from the voice channel\n"
+            "🥾 — **Kick** a member from the voice channel\n"
+            "👑 — **Claim** the voice channel\n"
+            "🔄 — **Transfer** the voice channel\n"
+            "✏️ — **Rename** the voice channel\n"
+            "➕ — **Manage** the user limit\n"
+            "ℹ️ — **View** channel information"
+        ), inline=False)
+        thumbnail = hub["thumbnail"] if hub and hub["thumbnail"] else None
+        if thumbnail:
+            embed.set_thumbnail(url=thumbnail)
+        elif self.bot.user:
+            embed.set_thumbnail(url=self.bot.user.display_avatar.url)
         return embed
 
     async def admin(self, interaction: discord.Interaction) -> bool:
