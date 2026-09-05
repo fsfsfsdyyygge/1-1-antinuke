@@ -8,6 +8,7 @@ from discord.ext import commands
 
 from .config import Settings, load_settings
 from .database import Database
+from .moderation import Moderation
 from .protection import AntiNikki
 
 
@@ -38,6 +39,7 @@ class AntiNikkiBot(commands.Bot):
     async def setup_hook(self) -> None:
         await self.db.init()
         await self.add_cog(AntiNikki(self))
+        await self.add_cog(Moderation(self))
         if self.settings.auto_sync:
             synced = await self.tree.sync()
             self.log.info("Synced %s slash commands", len(synced))

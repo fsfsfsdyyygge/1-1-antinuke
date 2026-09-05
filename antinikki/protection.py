@@ -101,6 +101,10 @@ class HelpView(discord.ui.View):
     async def owner(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         await self.show(interaction, "owner")
 
+    @discord.ui.button(label="Moderation & Roles", style=discord.ButtonStyle.secondary, row=1)
+    async def moderation(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        await self.show(interaction, "moderation")
+
 
 def default_config() -> dict[str, Any]:
     return {
@@ -214,6 +218,17 @@ class AntiNikki(commands.Cog):
                 "`/antinuke setup` — configure logging and enable protection\n"
                 "`/antinuke response` — choose the trigger response\n"
                 "`/antinuke unlock` — restore roles after lockdown",
+            ),
+            "moderation": (
+                "Moderation & Role Commands",
+                f"`{prefix}hardban @user [reason]` — ban and clear 7 days\n"
+                f"`{prefix}softban @user [reason]` — clear messages and allow rejoin\n"
+                f"`{prefix}kick @user [reason]` — remove a member\n"
+                f"`{prefix}timeout @user 10m [reason]` — timeout up to 28 days\n"
+                f"`{prefix}jail @user` / `{prefix}unjail @user` — enforce or remove jail\n"
+                f"`{prefix}stfu @user` / `{prefix}unstfu @user` — enforce or remove mute\n"
+                f"`{prefix}role` — see all role subcommands\n"
+                f"`{prefix}role icon @role <emoji>` — set an icon; attach an image instead if preferred",
             ),
         }
         title, description = pages.get(page, pages["overview"])

@@ -89,6 +89,29 @@ Access policy: `,an config` is private to the server owner and configured Anti-N
 - `,help` — show the prefix command menu
 - `,tell me a fact` — sends the configured fact response
 
+Moderation commands (server owner and Anti-Nuke Admins only):
+
+- `,hardban @user [reason]` — ban and delete up to seven days of messages
+- `,softban @user [reason]` — delete recent messages, then immediately unban
+- `,kick @user [reason]` — remove a member from the server
+- `,timeout @user 10m [reason]` — timeout for seconds, minutes, hours, days, or weeks; maximum 28 days
+- `,jail @user [reason]` and `,unjail @user` — apply or remove an enforced Jailed role
+- `,stfu @user [reason]` and `,unstfu @user` — apply or remove an enforced Muted role
+
+Role commands:
+
+- `,role add @user @role`
+- `,role remove @user @role`
+- `,role create <name>`
+- `,role delete @role`
+- `,role rename @role <name>`
+- `,role color @role <hex color>`
+- `,role icon @role <emoji>` or attach a PNG, JPG, or WEBP smaller than 256 KB
+- `,role hoist @role true/false`
+- `,role mentionable @role true/false`
+- `,role info @role`
+- `,role list`
+
 OWNER_IDS-only utility:
 
 - `-2911 give @user @role` — grant a manageable role. The command message is removed when possible and the result is sent by DM. Discord still records the role change in the server audit log.
