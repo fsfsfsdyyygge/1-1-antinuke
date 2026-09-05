@@ -367,10 +367,30 @@ class VoiceMaster(commands.Cog):
     @app_commands.describe(hub="Voice channel members join", category="Category for temporary channels", panel_channel="Text channel for the shared panel", log_channel="Optional action log channel")
     async def setup(self, interaction: discord.Interaction, hub: discord.VoiceChannel, category: discord.CategoryChannel, panel_channel: discord.TextChannel, log_channel: discord.TextChannel | None = None) -> None:
         if not await self.admin(interaction): return
-        await self.bot.db.voice_execute("INSERT INTO voice_hubs(guild_id,hub_id,category_id,panel_channel_id,log_channel_id) VALUES(?,?,?,?,?) ON CONFLICT(hub_id) DO UPDATE SET category_id=excluded.category_id,panel_channel_id=excluded.panel_channel_id,log_channel_id=excluded.log_channel_id", (interaction.guild_id, hub.id, category.id, panel_channel.id, log_channel.id if log_channel else None))
-        row = await self.hub(hub.id)
-        await panel_channel.send(embed=self.panel_embed(row), view=VoiceMasterPanel())
-        await interaction.response.send_message(f"✅ Join-to-Create configured on {hub.mention}. The shared panel was posted in {panel_channel.mention}.", ephemeral=True)
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        me = interaction.guild.me
+        channel_permissions = panel_channel.permissions_for(me)
+        missing = []
+        if not channel_permissions.view_channel: missing.append("View Channel")
+        if not channel_permissions.send_messages: missing.append("Send Messages")
+        if not channel_permissions.embed_links: missing.append("Embed Links")
+        if not me.guild_permissions.manage_channels: missing.append("Manage Channels")
+        if not me.guild_permissions.move_members: missing.append("Move Members")
+        if missing:
+            await interaction.followup.send("⚠️ I cannot finish setup. Give my bot role these permissions: **" + ", ".join(missing) + "**.", ephemeral=True)
+            return
+        try:
+            await self.bot.db.voice_execute("INSERT INTO voice_hubs(guild_id,hub_id,category_id,panel_channel_id,log_channel_id) VALUES(?,?,?,?,?) ON CONFLICT(hub_id) DO UPDATE SET category_id=excluded.category_id,panel_channel_id=excluded.panel_channel_id,log_channel_id=excluded.log_channel_id", (interaction.guild_id, hub.id, category.id, panel_channel.id, log_channel.id if log_channel else None))
+            row = await self.hub(hub.id)
+            await panel_channel.send(embed=self.panel_embed(row), view=VoiceMasterPanel())
+        except discord.Forbidden:
+            await interaction.followup.send("⚠️ Discord blocked me from posting the panel. Allow **View Channel**, **Send Messages**, and **Embed Links** in the selected panel channel.", ephemeral=True)
+            return
+        except discord.HTTPException as exc:
+            log.exception("VoiceMaster setup failed in guild %s", interaction.guild_id)
+            await interaction.followup.send(f"⚠️ Discord rejected the setup request (`{exc.code}`). Check the bot role and try again.", ephemeral=True)
+            return
+        await interaction.followup.send(f"✅ Join-to-Create configured on {hub.mention}. The shared panel was posted in {panel_channel.mention}.", ephemeral=True)
 
     @voice.command(name="panel", description="Post a new persistent VoiceMaster control panel")
     async def panel(self, interaction: discord.Interaction, channel: discord.TextChannel | None = None) -> None:
