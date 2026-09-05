@@ -19,6 +19,42 @@ def parse_duration(value: str) -> dt.timedelta | None:
     return dt.timedelta(seconds=seconds)
 
 
+class RoleListView(discord.ui.View):
+    def __init__(self, cog: "Moderation", guild: discord.Guild, owner_id: int) -> None:
+        super().__init__(timeout=600)
+        self.cog = cog
+        self.guild = guild
+        self.owner_id = owner_id
+        self.page = 0
+        self.update_buttons()
+
+    @property
+    def page_count(self) -> int:
+        return max(1, (len(self.guild.roles[1:]) + 9) // 10)
+
+    def update_buttons(self) -> None:
+        self.previous.disabled = self.page <= 0
+        self.next.disabled = self.page >= self.page_count - 1
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message("Only the person who opened this role list can change pages.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.secondary)
+    async def previous(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        self.page = max(0, self.page - 1)
+        self.update_buttons()
+        await interaction.response.edit_message(embed=self.cog.role_list_embed(self.guild, self.page), view=self)
+
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary)
+    async def next(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        self.page = min(self.page_count - 1, self.page + 1)
+        self.update_buttons()
+        await interaction.response.edit_message(embed=self.cog.role_list_embed(self.guild, self.page), view=self)
+
+
 class Moderation(commands.Cog):
     role_slash = app_commands.Group(name="role", description="Manage server roles")
 
@@ -108,6 +144,16 @@ class Moderation(commands.Cog):
 
     async def slash_record(self, interaction: discord.Interaction, event: str, details: dict[str, object]) -> None:
         await self.bot.db.incident(interaction.guild_id, interaction.user.id, event, "completed", details)
+
+    def role_list_embed(self, guild: discord.Guild, page: int) -> discord.Embed:
+        roles = list(reversed(guild.roles[1:]))
+        page_count = max(1, (len(roles) + 9) // 10)
+        page = min(max(page, 0), page_count - 1)
+        selected = roles[page * 10:(page + 1) * 10]
+        lines = [f"{role.mention} · `{role.id}`" for role in selected]
+        embed = discord.Embed(title="Server Roles", description="\n".join(lines) or "No roles.", color=discord.Color.blurple())
+        embed.set_footer(text=f"Page {page + 1}/{page_count} · {len(roles)} roles total")
+        return embed
 
     @app_commands.command(name="hardban", description="Ban a user and delete up to seven days of messages")
     @app_commands.guild_only()
@@ -286,9 +332,8 @@ class Moderation(commands.Cog):
     async def slash_role_list(self, interaction: discord.Interaction) -> None:
         if not await self.slash_allowed(interaction):
             return
-        lines = [f"{role.mention} · `{role.id}`" for role in reversed(interaction.guild.roles[1:])]
-        embed = discord.Embed(title="Server Roles", description="\n".join(lines)[:4000] or "No roles.", color=discord.Color.blurple())
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        view = RoleListView(self, interaction.guild, interaction.user.id)
+        await interaction.response.send_message(embed=self.role_list_embed(interaction.guild, 0), view=view, ephemeral=True)
 
     @commands.command(name="hardban", aliases=["hban"])
     @commands.guild_only()
@@ -485,8 +530,8 @@ class Moderation(commands.Cog):
     async def role_list(self, ctx: commands.Context) -> None:
         if not await self.allowed(ctx):
             return
-        lines = [f"{role.mention} · `{role.id}`" for role in reversed(ctx.guild.roles[1:])]
-        await ctx.reply(embed=discord.Embed(title="Server Roles", description="\n".join(lines)[:4000] or "No roles.", color=discord.Color.blurple()), mention_author=False)
+        view = RoleListView(self, ctx.guild, ctx.author.id)
+        await ctx.reply(embed=self.role_list_embed(ctx.guild, 0), view=view, mention_author=False)
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:

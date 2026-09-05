@@ -86,6 +86,8 @@ Access policy: `,an config` is private to the server owner and configured Anti-N
 - `,antinuke`, `,antinikki`, `,panel`, or `,security` — open the panel
 - `,prefix` — show the current prefix
 - `,prefix ?` — change the prefix to `?`
+- `/prefix new_prefix:?` — show or change the prefix with a slash command
+- `/prefixpanel` or `,prefixpanel` — open a clickable prefix panel with presets and a custom-prefix form
 - `,help` — show the prefix command menu
 - `,tell me a fact` — sends the configured fact response
 
@@ -113,6 +115,8 @@ Role commands:
 - `,role mentionable @role true/false`
 - `,role info @role`
 - `,role list`
+
+The role list displays 10 roles per page with **Previous** and **Next** buttons.
 
 OWNER_IDS-only utility:
 

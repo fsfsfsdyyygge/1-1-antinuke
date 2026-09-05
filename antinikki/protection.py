@@ -106,6 +106,60 @@ class HelpView(discord.ui.View):
         await self.show(interaction, "moderation")
 
 
+class CustomPrefixModal(discord.ui.Modal, title="Set a custom prefix"):
+    prefix = discord.ui.TextInput(label="New prefix", placeholder="Example: !", min_length=1, max_length=10)
+
+    def __init__(self, cog: "AntiNikki", view: "PrefixPanelView") -> None:
+        super().__init__()
+        self.cog = cog
+        self.panel_view = view
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        value = str(self.prefix).strip()
+        if any(character.isspace() for character in value):
+            await interaction.response.send_message("The prefix cannot contain spaces.", ephemeral=True)
+            return
+        await self.panel_view.save(interaction, value)
+
+
+class PrefixPanelView(discord.ui.View):
+    def __init__(self, cog: "AntiNikki") -> None:
+        super().__init__(timeout=600)
+        self.cog = cog
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.guild is None or interaction.user.id != interaction.guild.owner_id:
+            await interaction.response.send_message("Only the Discord server owner can change the prefix.", ephemeral=True)
+            return False
+        return True
+
+    async def save(self, interaction: discord.Interaction, prefix: str) -> None:
+        cfg = await self.cog.config(interaction.guild_id)
+        cfg["prefix"] = prefix
+        await self.cog.bot.db.set(interaction.guild_id, cfg)
+        await interaction.response.edit_message(embed=self.cog.prefix_embed(prefix), view=self)
+
+    @discord.ui.button(label=",", style=discord.ButtonStyle.primary)
+    async def comma(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        await self.save(interaction, ",")
+
+    @discord.ui.button(label="!", style=discord.ButtonStyle.secondary)
+    async def exclamation(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        await self.save(interaction, "!")
+
+    @discord.ui.button(label="?", style=discord.ButtonStyle.secondary)
+    async def question(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        await self.save(interaction, "?")
+
+    @discord.ui.button(label="-", style=discord.ButtonStyle.secondary)
+    async def dash(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        await self.save(interaction, "-")
+
+    @discord.ui.button(label="Custom", style=discord.ButtonStyle.success)
+    async def custom(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        await interaction.response.send_modal(CustomPrefixModal(self.cog, self))
+
+
 def default_config() -> dict[str, Any]:
     return {
         "enabled": True, "log_channel_id": None, "whitelist_users": [], "whitelist_roles": [], "admin_roles": [], "admin_users": [],
@@ -234,6 +288,15 @@ class AntiNikki(commands.Cog):
         title, description = pages.get(page, pages["overview"])
         embed = discord.Embed(title=f"1/1 ANTINUKE Help · {title}", description=description, color=discord.Color.blurple())
         embed.set_footer(text="Only the server owner and Anti-Nuke Admins can access this panel.")
+        return embed
+
+    def prefix_embed(self, prefix: str) -> discord.Embed:
+        embed = discord.Embed(
+            title="1/1 ANTINUKE Prefix Panel",
+            description=f"Current prefix: **`{prefix}`**\n\nChoose a preset below or press **Custom** to enter any prefix from 1–10 characters.",
+            color=discord.Color.blurple(),
+        )
+        embed.set_footer(text=f"Example: {prefix}help · Slash commands always continue to use /")
         return embed
 
     async def config_embed(self, guild: discord.Guild) -> discord.Embed:
@@ -480,6 +543,35 @@ class AntiNikki(commands.Cog):
         cfg["lockdown_roles"] = remaining; await self.bot.db.set(interaction.guild_id, cfg)
         await interaction.followup.send(f"Restored `{restored}` roles. `{len(remaining)}` could not be restored.", ephemeral=True)
 
+    @app_commands.command(name="prefix", description="Show or change the 1/1 ANTINUKE command prefix")
+    @app_commands.guild_only()
+    async def slash_prefix(self, interaction: discord.Interaction, new_prefix: str | None = None) -> None:
+        if not await self.require_owner(interaction):
+            return
+        cfg = await self.config(interaction.guild_id)
+        if new_prefix is None:
+            current = str(cfg.get("prefix", self.bot.settings.default_prefix))
+            await interaction.response.send_message(f"Current prefix: `{current}`", ephemeral=True)
+            return
+        new_prefix = new_prefix.strip()
+        if not 1 <= len(new_prefix) <= 10 or any(character.isspace() for character in new_prefix):
+            await interaction.response.send_message("Choose a prefix from 1–10 characters with no spaces.", ephemeral=True)
+            return
+        cfg["prefix"] = new_prefix
+        await self.bot.db.set(interaction.guild_id, cfg)
+        await interaction.response.send_message(
+            f"Prefix changed to `{new_prefix}`. Prefix commands now start with `{new_prefix}`.",
+            ephemeral=True,
+        )
+
+    @app_commands.command(name="prefixpanel", description="Open the clickable prefix settings panel")
+    @app_commands.guild_only()
+    async def slash_prefix_panel(self, interaction: discord.Interaction) -> None:
+        if not await self.require_owner(interaction):
+            return
+        prefix = str((await self.config(interaction.guild_id)).get("prefix", self.bot.settings.default_prefix))
+        await interaction.response.send_message(embed=self.prefix_embed(prefix), view=PrefixPanelView(self), ephemeral=True)
+
     @commands.group(name="antinuke", aliases=["panel", "security"], invoke_without_command=True)
     @commands.guild_only()
     async def prefix_panel(self, ctx: commands.Context) -> None:
@@ -532,7 +624,7 @@ class AntiNikki(commands.Cog):
         embed = discord.Embed(title="1/1 ANTINUKE Admin Users", description="\n".join(lines) or "No Anti-Nuke Admin users found.", color=discord.Color.blurple())
         await ctx.reply(embed=embed, mention_author=False)
 
-    @commands.command(name="prefix")
+    @commands.command(name="prefix", aliases=["setprefix"])
     @commands.guild_only()
     async def prefix_change(self, ctx: commands.Context, new_prefix: str | None = None) -> None:
         """Show or change 1/1 ANTINUKE's text-command prefix."""
@@ -550,6 +642,15 @@ class AntiNikki(commands.Cog):
         cfg["prefix"] = new_prefix
         await self.bot.db.set(ctx.guild.id, cfg)
         await ctx.reply(f"Prefix changed to `{new_prefix}`. Open the panel with `{new_prefix}antinuke`.", mention_author=False)
+
+    @commands.command(name="prefixpanel", aliases=["prefixmenu"])
+    @commands.guild_only()
+    async def prefix_panel_menu(self, ctx: commands.Context) -> None:
+        if not isinstance(ctx.author, discord.Member) or not self.owner_member(ctx.author):
+            await ctx.reply("Only the Discord server owner can change the prefix.", mention_author=False)
+            return
+        prefix = str((await self.config(ctx.guild.id)).get("prefix", self.bot.settings.default_prefix))
+        await ctx.reply(embed=self.prefix_embed(prefix), view=PrefixPanelView(self), mention_author=False)
 
     @commands.command(name="help")
     @commands.guild_only()
