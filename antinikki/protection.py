@@ -280,7 +280,7 @@ class AntiNikki(commands.Cog):
                 f"`{prefix}kick @user [reason]` — remove a member\n"
                 f"`{prefix}timeout @user 10m [reason]` — timeout up to 28 days\n"
                 f"`{prefix}jail @user` / `{prefix}unjail @user` — enforce or remove jail\n"
-                f"`{prefix}stfu @user` / `{prefix}unstfu @user` — enforce or remove mute\n"
+                f"`{prefix}stfu @user` / `{prefix}unstfu @user` — add or remove the Muted role (text only)\n"
                 f"`{prefix}role` — see all role subcommands\n"
                 f"`{prefix}role icon @role <emoji>` — set an icon; attach an image instead if preferred",
             ),

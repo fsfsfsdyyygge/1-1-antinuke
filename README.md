@@ -100,7 +100,7 @@ Every moderation and role command is available both as a comma-prefix command an
 - `,kick @user [reason]` — remove a member from the server
 - `,timeout @user 10m [reason]` — timeout for seconds, minutes, hours, days, or weeks; maximum 28 days
 - `,jail @user [reason]` and `,unjail @user` — apply or remove an enforced Jailed role
-- `,stfu @user [reason]` and `,unstfu @user` — apply or remove an enforced Muted role
+- `,stfu @user [reason]` and `,unstfu @user` — add or remove the Muted role; this does not server-mute voice
 
 Role commands:
 

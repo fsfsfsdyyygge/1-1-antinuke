@@ -209,6 +209,8 @@ class Moderation(commands.Cog):
         ids = cfg.setdefault(key, [])
         if member.id not in ids:
             ids.append(member.id)
+        if key == "muted_users":
+            cfg["forced_mutes"] = [user_id for user_id in cfg.get("forced_mutes", []) if user_id != member.id]
         await self.bot.db.set(interaction.guild_id, cfg)
         await self.slash_record(interaction, key.rstrip("s"), {"user_id": member.id, "role_id": role.id})
         await interaction.followup.send(f"{member.mention} is now **{role_name.lower()}**.", ephemeral=True)
@@ -221,6 +223,8 @@ class Moderation(commands.Cog):
             await member.remove_roles(role, reason=f"Released by {interaction.user}")
         cfg = await self.bot.get_cog("AntiNikki").config(interaction.guild_id)
         cfg[key] = [user_id for user_id in cfg.get(key, []) if user_id != member.id]
+        if role_name == "Muted":
+            cfg["forced_mutes"] = [user_id for user_id in cfg.get("forced_mutes", []) if user_id != member.id]
         await self.bot.db.set(interaction.guild_id, cfg)
         await interaction.response.send_message(f"Released {member.mention} from **{role_name.lower()}**.", ephemeral=True)
 
@@ -234,15 +238,15 @@ class Moderation(commands.Cog):
     async def slash_unjail(self, interaction: discord.Interaction, member: discord.Member) -> None:
         await self.slash_release_role(interaction, member, "Jailed", "jailed_users")
 
-    @app_commands.command(name="stfu", description="Apply an enforced Muted role")
+    @app_commands.command(name="stfu", description="Add the Muted role (does not server-mute voice)")
     @app_commands.guild_only()
     async def slash_stfu(self, interaction: discord.Interaction, member: discord.Member, reason: str = "No reason provided") -> None:
-        await self.slash_force_role(interaction, member, "Muted", "forced_mutes", f"Enforced mute by {interaction.user}: {reason}")
+        await self.slash_force_role(interaction, member, "Muted", "muted_users", f"Muted role added by {interaction.user}: {reason}")
 
-    @app_commands.command(name="unstfu", description="Remove an enforced Muted role")
+    @app_commands.command(name="unstfu", description="Remove the Muted role")
     @app_commands.guild_only()
     async def slash_unstfu(self, interaction: discord.Interaction, member: discord.Member) -> None:
-        await self.slash_release_role(interaction, member, "Muted", "forced_mutes")
+        await self.slash_release_role(interaction, member, "Muted", "muted_users")
 
     @role_slash.command(name="add", description="Give a role to a member")
     async def slash_role_add(self, interaction: discord.Interaction, member: discord.Member, role: discord.Role) -> None:
@@ -386,8 +390,11 @@ class Moderation(commands.Cog):
             role = await guild.create_role(name=name, reason="1/1 ANTINUKE moderation setup")
         denied = discord.PermissionOverwrite(
             send_messages=False, send_messages_in_threads=False, create_public_threads=False,
-            create_private_threads=False, add_reactions=False, speak=False, stream=False,
+            create_private_threads=False, add_reactions=False,
         )
+        if name == "Jailed":
+            denied.speak = False
+            denied.stream = False
         for channel in guild.channels:
             try:
                 await channel.set_permissions(role, overwrite=denied, reason="1/1 ANTINUKE restriction role")
@@ -404,6 +411,8 @@ class Moderation(commands.Cog):
         ids = cfg.setdefault(key, [])
         if member.id not in ids:
             ids.append(member.id)
+        if key == "muted_users":
+            cfg["forced_mutes"] = [user_id for user_id in cfg.get("forced_mutes", []) if user_id != member.id]
         await self.bot.db.set(ctx.guild.id, cfg)
         await self.record(ctx, key.rstrip("s"), {"user_id": member.id, "role_id": role.id})
         await ctx.reply(f"{member.mention} is now **{role_name.lower()}**.", mention_author=False)
@@ -416,6 +425,8 @@ class Moderation(commands.Cog):
             await member.remove_roles(role, reason=f"Released by {ctx.author}")
         cfg = await self.bot.get_cog("AntiNikki").config(ctx.guild.id)
         cfg[key] = [user_id for user_id in cfg.get(key, []) if user_id != member.id]
+        if role_name == "Muted":
+            cfg["forced_mutes"] = [user_id for user_id in cfg.get("forced_mutes", []) if user_id != member.id]
         await self.bot.db.set(ctx.guild.id, cfg)
         await ctx.reply(f"Released {member.mention} from **{role_name.lower()}**.", mention_author=False)
 
@@ -432,12 +443,12 @@ class Moderation(commands.Cog):
     @commands.command(name="stfu")
     @commands.guild_only()
     async def stfu(self, ctx: commands.Context, member: discord.Member, *, reason: str = "No reason provided") -> None:
-        await self.force_role(ctx, member, "Muted", "forced_mutes", f"Enforced mute by {ctx.author}: {reason}")
+        await self.force_role(ctx, member, "Muted", "muted_users", f"Muted role added by {ctx.author}: {reason}")
 
     @commands.command(name="unstfu", aliases=["unmute"])
     @commands.guild_only()
     async def unstfu(self, ctx: commands.Context, member: discord.Member) -> None:
-        await self.release_role(ctx, member, "Muted", "forced_mutes")
+        await self.release_role(ctx, member, "Muted", "muted_users")
 
     @commands.group(name="role", invoke_without_command=True)
     @commands.guild_only()
