@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import re
 
@@ -57,6 +58,8 @@ class RoleListView(discord.ui.View):
 
 class Moderation(commands.Cog):
     role_slash = app_commands.Group(name="role", description="Manage server roles")
+    vc_slash = app_commands.Group(name="vc", description="Manage enforced voice mutes")
+    godmode_slash = app_commands.Group(name="godmode", description="Server-owner protection for trusted members")
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -247,6 +250,65 @@ class Moderation(commands.Cog):
     @app_commands.guild_only()
     async def slash_unstfu(self, interaction: discord.Interaction, member: discord.Member) -> None:
         await self.slash_release_role(interaction, member, "Muted", "muted_users")
+
+    @vc_slash.command(name="stfu", description="Server-mute a member and instantly enforce the mute")
+    async def slash_vc_stfu(self, interaction: discord.Interaction, member: discord.Member, reason: str = "No reason provided") -> None:
+        if not await self.slash_targetable(interaction, member):
+            return
+        if member.voice is None or member.voice.channel is None:
+            await interaction.response.send_message("❌ That member must be connected to a voice channel.", ephemeral=True)
+            return
+        try:
+            await member.edit(mute=True, reason=f"VC stfu by {interaction.user}: {reason}")
+        except discord.Forbidden:
+            await interaction.response.send_message("⚠️ I need **Mute Members**, and my bot role must be above that member's highest role.", ephemeral=True)
+            return
+        cfg = await self.bot.get_cog("AntiNikki").config(interaction.guild_id)
+        users = cfg.setdefault("voice_stfu_users", [])
+        if member.id not in users:
+            users.append(member.id)
+        await self.bot.db.set(interaction.guild_id, cfg)
+        await self.slash_record(interaction, "voice_stfu", {"user_id": member.id, "reason": reason})
+        await interaction.response.send_message(f"🔇 {member.mention} is server-muted and the mute will be enforced.", ephemeral=True)
+
+    @vc_slash.command(name="unstfu", description="Stop enforcing a member's server mute and unmute them")
+    async def slash_vc_unstfu(self, interaction: discord.Interaction, member: discord.Member) -> None:
+        if not await self.slash_allowed(interaction):
+            return
+        cfg = await self.bot.get_cog("AntiNikki").config(interaction.guild_id)
+        cfg["voice_stfu_users"] = [user_id for user_id in cfg.get("voice_stfu_users", []) if user_id != member.id]
+        await self.bot.db.set(interaction.guild_id, cfg)
+        if member.voice is not None:
+            try:
+                await member.edit(mute=False, reason=f"VC unstfu by {interaction.user}")
+            except discord.Forbidden:
+                await interaction.response.send_message("⚠️ Enforcement was removed, but I could not server-unmute them. Check **Mute Members** and role order.", ephemeral=True)
+                return
+        await interaction.response.send_message(f"🔊 Voice-mute enforcement was removed from {member.mention}.", ephemeral=True)
+
+    @godmode_slash.command(name="set", description="Enable or disable God Mode for a member (server owner only)")
+    async def slash_godmode_set(self, interaction: discord.Interaction, member: discord.Member, enabled: bool) -> None:
+        if interaction.guild is None or interaction.user.id != interaction.guild.owner_id:
+            await interaction.response.send_message("❌ Only the Discord server owner can change God Mode.", ephemeral=True)
+            return
+        cfg = await self.bot.get_cog("AntiNikki").config(interaction.guild_id)
+        protected = cfg.setdefault("godmode_users", [])
+        if enabled and member.id not in protected:
+            protected.append(member.id)
+        if not enabled:
+            protected[:] = [user_id for user_id in protected if user_id != member.id]
+        await self.bot.db.set(interaction.guild_id, cfg)
+        await interaction.response.send_message(f"🛡️ God Mode is now **{'enabled' if enabled else 'disabled'}** for {member.mention}.", ephemeral=True)
+
+    @godmode_slash.command(name="list", description="List members protected by God Mode")
+    async def slash_godmode_list(self, interaction: discord.Interaction) -> None:
+        if interaction.guild is None or interaction.user.id != interaction.guild.owner_id:
+            await interaction.response.send_message("❌ Only the Discord server owner can view God Mode.", ephemeral=True)
+            return
+        cfg = await self.bot.get_cog("AntiNikki").config(interaction.guild_id)
+        protected = cfg.get("godmode_users", [])
+        value = "\n".join(f"<@{user_id}> (`{user_id}`)" for user_id in protected) or "No members are protected."
+        await interaction.response.send_message(embed=discord.Embed(title="God Mode Members", description=value, color=discord.Color.gold()), ephemeral=True)
 
     @role_slash.command(name="add", description="Give a role to a member")
     async def slash_role_add(self, interaction: discord.Interaction, member: discord.Member, role: discord.Role) -> None:
@@ -450,6 +512,84 @@ class Moderation(commands.Cog):
     async def unstfu(self, ctx: commands.Context, member: discord.Member) -> None:
         await self.release_role(ctx, member, "Muted", "muted_users")
 
+    @commands.group(name="vc", invoke_without_command=True)
+    @commands.guild_only()
+    async def vc(self, ctx: commands.Context) -> None:
+        if await self.allowed(ctx):
+            await ctx.reply(f"Use `{ctx.prefix}vc stfu @user [reason]` or `{ctx.prefix}vc unstfu @user`.", mention_author=False)
+
+    @vc.command(name="stfu")
+    async def vc_stfu(self, ctx: commands.Context, member: discord.Member, *, reason: str = "No reason provided") -> None:
+        if not await self.targetable(ctx, member):
+            return
+        if member.voice is None or member.voice.channel is None:
+            await ctx.reply("❌ That member must be connected to a voice channel.", mention_author=False)
+            return
+        try:
+            await member.edit(mute=True, reason=f"VC stfu by {ctx.author}: {reason}")
+        except discord.Forbidden:
+            await ctx.reply("⚠️ I need **Mute Members**, and my bot role must be above that member's highest role.", mention_author=False)
+            return
+        cfg = await self.bot.get_cog("AntiNikki").config(ctx.guild.id)
+        users = cfg.setdefault("voice_stfu_users", [])
+        if member.id not in users:
+            users.append(member.id)
+        await self.bot.db.set(ctx.guild.id, cfg)
+        await self.record(ctx, "voice_stfu", {"user_id": member.id, "reason": reason})
+        await ctx.reply(f"🔇 {member.mention} is server-muted and the mute will be enforced.", mention_author=False)
+
+    @vc.command(name="unstfu", aliases=["unmute"])
+    async def vc_unstfu(self, ctx: commands.Context, member: discord.Member) -> None:
+        if not await self.allowed(ctx):
+            return
+        cfg = await self.bot.get_cog("AntiNikki").config(ctx.guild.id)
+        cfg["voice_stfu_users"] = [user_id for user_id in cfg.get("voice_stfu_users", []) if user_id != member.id]
+        await self.bot.db.set(ctx.guild.id, cfg)
+        if member.voice is not None:
+            try:
+                await member.edit(mute=False, reason=f"VC unstfu by {ctx.author}")
+            except discord.Forbidden:
+                await ctx.reply("⚠️ Enforcement was removed, but I could not server-unmute them. Check **Mute Members** and role order.", mention_author=False)
+                return
+        await ctx.reply(f"🔊 Voice-mute enforcement was removed from {member.mention}.", mention_author=False)
+
+    @commands.group(name="godmode", aliases=["god"], invoke_without_command=True)
+    @commands.guild_only()
+    async def godmode(self, ctx: commands.Context) -> None:
+        if ctx.author.id != ctx.guild.owner_id:
+            await ctx.reply("❌ Only the Discord server owner can change God Mode.", mention_author=False)
+            return
+        await ctx.reply(f"Use `{ctx.prefix}godmode add @user`, `{ctx.prefix}godmode remove @user`, or `{ctx.prefix}godmode list`.", mention_author=False)
+
+    @godmode.command(name="add", aliases=["on", "enable"])
+    async def godmode_add(self, ctx: commands.Context, member: discord.Member) -> None:
+        if ctx.author.id != ctx.guild.owner_id:
+            await ctx.reply("❌ Only the Discord server owner can change God Mode.", mention_author=False); return
+        cfg = await self.bot.get_cog("AntiNikki").config(ctx.guild.id)
+        protected = cfg.setdefault("godmode_users", [])
+        if member.id not in protected:
+            protected.append(member.id)
+        await self.bot.db.set(ctx.guild.id, cfg)
+        await ctx.reply(f"🛡️ God Mode enabled for {member.mention}.", mention_author=False)
+
+    @godmode.command(name="remove", aliases=["off", "disable"])
+    async def godmode_remove(self, ctx: commands.Context, member: discord.Member) -> None:
+        if ctx.author.id != ctx.guild.owner_id:
+            await ctx.reply("❌ Only the Discord server owner can change God Mode.", mention_author=False); return
+        cfg = await self.bot.get_cog("AntiNikki").config(ctx.guild.id)
+        cfg["godmode_users"] = [user_id for user_id in cfg.get("godmode_users", []) if user_id != member.id]
+        await self.bot.db.set(ctx.guild.id, cfg)
+        await ctx.reply(f"God Mode disabled for {member.mention}.", mention_author=False)
+
+    @godmode.command(name="list")
+    async def godmode_list(self, ctx: commands.Context) -> None:
+        if ctx.author.id != ctx.guild.owner_id:
+            await ctx.reply("❌ Only the Discord server owner can view God Mode.", mention_author=False); return
+        cfg = await self.bot.get_cog("AntiNikki").config(ctx.guild.id)
+        protected = cfg.get("godmode_users", [])
+        value = "\n".join(f"<@{user_id}> (`{user_id}`)" for user_id in protected) or "No members are protected."
+        await ctx.reply(embed=discord.Embed(title="God Mode Members", description=value, color=discord.Color.gold()), mention_author=False)
+
     @commands.group(name="role", invoke_without_command=True)
     @commands.guild_only()
     async def role(self, ctx: commands.Context) -> None:
@@ -547,6 +687,15 @@ class Moderation(commands.Cog):
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
         cfg = await self.bot.get_cog("AntiNikki").config(after.guild.id)
+        if after.id in cfg.get("godmode_users", []):
+            removed = [role for role in before.roles if role not in after.roles and not role.is_default() and not role.managed and role < after.guild.me.top_role]
+            try:
+                if removed:
+                    await after.add_roles(*removed, reason="1/1 ANTINUKE God Mode role restoration")
+                if after.timed_out_until is not None:
+                    await after.timeout(None, reason="1/1 ANTINUKE God Mode timeout reversal")
+            except discord.HTTPException:
+                pass
         required = []
         if after.id in cfg.get("forced_mutes", []):
             required.append("Muted")
@@ -559,3 +708,58 @@ class Moderation(commands.Cog):
                     await after.add_roles(role, reason=f"1/1 ANTINUKE enforced {name.lower()}")
                 except discord.HTTPException:
                     pass
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState) -> None:
+        if member.bot or after.channel is None:
+            return
+        cfg = await self.bot.get_cog("AntiNikki").config(member.guild.id)
+        if member.id in cfg.get("godmode_users", []) and (after.mute or after.deaf):
+            try:
+                await member.edit(mute=False, deafen=False, reason="1/1 ANTINUKE God Mode voice protection")
+            except discord.HTTPException:
+                pass
+            return
+        if after.mute:
+            return
+        if member.id not in cfg.get("voice_stfu_users", []):
+            return
+        try:
+            await member.edit(mute=True, reason="1/1 ANTINUKE enforced VC stfu")
+        except discord.HTTPException:
+            pass
+
+    @commands.Cog.listener()
+    async def on_member_ban(self, guild: discord.Guild, user: discord.User) -> None:
+        cfg = await self.bot.get_cog("AntiNikki").config(guild.id)
+        if user.id not in cfg.get("godmode_users", []):
+            return
+        try:
+            await guild.unban(user, reason="1/1 ANTINUKE God Mode automatic unban")
+        except discord.HTTPException:
+            pass
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member) -> None:
+        cfg = await self.bot.get_cog("AntiNikki").config(member.guild.id)
+        if member.id not in cfg.get("godmode_users", []):
+            return
+        await asyncio.sleep(1)
+        kicked = False
+        try:
+            async for entry in member.guild.audit_logs(limit=5, action=discord.AuditLogAction.kick):
+                if entry.target and entry.target.id == member.id and (discord.utils.utcnow() - entry.created_at).total_seconds() < 10:
+                    kicked = True
+                    break
+        except discord.HTTPException:
+            return
+        if not kicked:
+            return
+        channel = next((c for c in member.guild.text_channels if c.permissions_for(member.guild.me).create_instant_invite), None)
+        if channel is None:
+            return
+        try:
+            invite = await channel.create_invite(max_age=86400, max_uses=1, unique=True, reason="God Mode kick recovery")
+            await member.send(f"You were kicked from **{member.guild.name}**. God Mode cannot force an account back into a server, so here is a one-use rejoin link: {invite.url}")
+        except discord.HTTPException:
+            pass
