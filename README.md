@@ -91,6 +91,8 @@ Access policy: `,an config` is private to the server owner and configured Anti-N
 
 Moderation commands (server owner and Anti-Nuke Admins only):
 
+Every moderation and role command is available both as a comma-prefix command and as a discoverable Discord slash command. For example, use either `,hardban` or `/hardban`.
+
 - `,hardban @user [reason]` — ban and delete up to seven days of messages
 - `,softban @user [reason]` — delete recent messages, then immediately unban
 - `,kick @user [reason]` — remove a member from the server
